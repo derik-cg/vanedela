@@ -1,0 +1,166 @@
+---
+title: "Riesgo en Vanedela"
+author: "Derik Castillo"
+date: "May 18, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+rm(list=ls())
+setwd("~/Investigacion/Vanedela")
+vanedela<-read.csv("base edad cd y rd18417.csv")
+```
+
+
+## Exploración de los datos
+
+Me interesan las columnas 5 a 7, que corresponden a los datos de las tres fases del comportamiento "CD1.1A", "CD1.1B", "CD1.1C".
+
+En principio, se puede definir el tiempo al que se puede decir que existe riesgo, como el percentil del 90%. La adición que se puede hacer es calcular los intervalos de confianza del 90% para el percentil. Para calcular el intervalo de confianza se utiliza un método de bootstrap, en el que se muestrean aleatoriamente una fracción de los datos, y se calcula el percentil. Se repite este procedimiento 1000 veces y con los 1000 percentiles se hace el intervalo de confianza. Este procedimiento funciona aún cuando la distribución de los datos se aleja de la normal.
+
+En primer lugar se hace una exploración general de los datos, tomando sólo el primer comportamiento.
+
+El número de niños en cada etapa en el orden A, B, C.
+
+```{r}
+apply(!is.na(vanedela[,5:7]),2,sum)
+```
+
+Ahora los histogramas para cada una de las fases. Si el histograma es simétrico, se puede decir que su distribución se parece a la normal. Primero fase A
+
+```{r}
+hist(vanedela[,5])
+```
+
+Ahora la fase B
+
+```{r}
+hist(vanedela[,6])
+```
+
+Finalmente la fase C
+
+```{r}
+hist(vanedela[,7])
+```
+
+Se puede ver que sólo B y C tienen distribuciones que se aproximan a la normal.
+
+Una gráfica de cajas puede ayudar a comparar las medianas, y los percentiles en las tres fases. En esta representación la línea gruesa en el medio representa la mediana. Los lados de la caja el primer y tercer cuartil.
+
+```{r}
+boxplot(vanedela[,5:7],coef=-1)
+```
+
+Se puede ver que la mediana aumenta. Sabiendo que la fase C es como una meta, es decir que no hay algo más allá, entonces se puede pensar en esto como una especie de asíntota.
+
+## Medianas y percentiles 90%
+
+Las medianas de las tres fases son
+
+```{r}
+apply(vanedela[,5:7],2,median,na.rm=T)
+```
+
+Los percentiles de 90% para cada una de las fases son
+
+```{r}
+apply(vanedela[,5:7],2,quantile,0.9,na.rm=T)
+```
+
+Se pueden calcular los intervalos de confianza para los percentiles 90. La idea sería que se puede cortar en la fecha más tardía del intervalo de confianza para la fase C. Esto definiría un extremo de la ventana de no-riesgo.
+
+```{r}
+#Primero se llama a la función
+require(boot)
+#luego se hace una función para los índices
+p90boot<-function(pe,i){quantile(pe[i],0.9,na.rm=T)}
+#Phase A
+pre.boot<-boot(vanedela[,5],p90boot,R=1000)
+p90.CD1A<-boot.ci(boot.out=pre.boot,conf=0.95,type = "norm")
+#phase B
+pre.boot<-boot(vanedela[,6],p90boot,R=1000)
+p90.CD1B<-boot.ci(boot.out=pre.boot,conf=0.95,type = "norm")
+#Phase C
+pre.boot<-boot(vanedela[,7],p90boot,R=1000)
+p90.CD1C<-boot.ci(boot.out=pre.boot,conf=0.95,type = "norm")
+```
+
+Para la fase A, el percentil de 90% es `r p90.CD1A$t0`. Para esta misma fase, los extremos del intervalo de confianza al 95% para el percentil de 90% son `r p90.CD1A$normal[2:3]`.
+
+Para la fase B, el percentil de 90% es `r p90.CD1B$t0`. Para esta misma fase, los extremos del intervalo de confianza al 95% para el percentil de 90% son `r p90.CD1B$normal[2:3]`.
+
+Para la fase C, el percentil de 90% es `r p90.CD1C$t0`. Para esta misma fase, los extremos del intervalo de confianza al 95% para el percentil de 90% son `r p90.CD1C$normal[2:3]`
+
+Una representación gráfica de los percentiles ayuda a ubicarlos con respecto a las fases y el tiempo. En la siguiente gráfica, los dias se muestran en el eje x, en el eje y se muestran las tres fases. La bolita es el percentil 90% para una fase y la raya indica el intervalo de confianza.
+
+```{r}
+plot(1,type="n",xlim=c(0,160),ylim=c(0,4),xlab="dias",ylab="fases",main="IC 95% para percentil 90. CD1A,B,C",yaxt="n")
+points(c(p90.CD1A$t0,p90.CD1B$t0,p90.CD1C$t0),c(1,2,3))
+axis(2,at=c(1,2,3),labels=c("A","B","C"))
+lines(p90.CD1A$normal[2:3],c(1,1))
+lines(p90.CD1B$normal[2:3],c(2,2))
+lines(p90.CD1C$normal[2:3],c(3,3))
+```
+
+La gráfica de los percentiles 90 y los intervalos de confianza es un resumen, pero la gráfica con todos los datos puede dar una idea más completa de cómo se están comportando. Cada niño está representado por un símbolo. La bolita es corresponde a la fase A, el triángulo a la fase B y la cruz a la fase C. Las líneas punteadas conectan mediciones para el mismo niño. Los símbolos que no están conectados, indican mediciones aisladas. 
+
+```{r}
+plot(vanedela[,5],rep(1,126),xlim=c(0,160),ylim=c(0,4),xlab="dias",ylab="fases",yaxt="n",main="datos crudos")
+axis(2,at=c(1,2,3),labels=c("A","B","C"))
+points(vanedela[,6],rep(2,126),pch=2)
+points(vanedela[,7],rep(3,126),pch=3)
+for (r in 1:126)
+{
+  lines(as.numeric(vanedela[r,5:7]),1:3,lty=2)  
+}
+```
+
+## Intervalo de tiempo entre fases
+
+Otra forma de caracterizar las fases, es con el retraso o intervalo de tiempo entre dos de ellas. Esto solo se puede hacer con los niños que tienen al menos dos mediciones.
+
+# Intervalo entre fases A y B
+
+Si consideramos el intervalo de tiempo para las fases A y B, lo primero seria contar cuantos casos tenemos de niños que tienen mediciones en ambas columnas.
+
+```{r}
+#Todas las distancias son
+dtCD1AB<-vanedela[,6]-vanedela[,5]
+```
+
+El número de niños que tienen ambas mediciones es `r sum(!is.na(dtCD1AB))`. El histograma de los `r sum(!is.na(dtCD1AB))` intervalos es
+
+```{r}
+hist(dtCD1AB)
+```
+
+El histograma indica que se tiene una distribución muy sesgada, tipo exponencial. Ahora se puede ver el percentil 90% de los intervalos junto con su intervalo de confianza.
+
+```{r}
+pre.boot<-boot(dtCD1AB,p90boot,R=1000)
+p90.dtCD1AB<-boot.ci(boot.out=pre.boot,conf=0.95,type = "norm")
+```
+
+El percentil del 90% es `r p90.dtCD1AB$t0`, los extremos del intervalo de confianza son `r p90.dtCD1AB$normal[2:3]`.
+
+Como ejemplo, usando los datos de intervalo de tiempo, se puede decir que a partir de que un niño presenta el comportamiento A, entonces se debe esperar entre `r p90.dtCD1AB$normal[2]` y `r p90.dtCD1AB$normal[3]` dias para que presente el comportamiento B. Si se tarda mas esta en riesgo.
+
+# Intervalo entre fases B y C
+
+Se hace lo mismo para el otro intervalo. 
+
+```{r}
+dtCD1BC<-vanedela[,7]-vanedela[,6]
+pre.boot<-boot(dtCD1BC,p90boot,R=1000)
+p90.dtCD1AC<-boot.ci(boot.out=pre.boot,conf=0.95,type="norm")
+```
+
+Hay `r sum(!is.na(dtCD1BC))` niños con ambas mediciones. El percentil 90 de este intervalo es `r p90.dtCD1AC$t0` y los extremos del intevalo de confianza son `r p90.dtCD1AC$normal[2:3]`.
+
+A manera de ejemplo, se puede decir que un niño presenta riesgo si una vez que presentó el comportamiento B tarda mas de `r p90.dtCD1AC$normal[3]` dias en presentar el comportamiento C.
+
+### Nota
+
+En el artículo de WHO se usan failure time models. Falta analizar si se puede ocupar este modelo para estos datos.
